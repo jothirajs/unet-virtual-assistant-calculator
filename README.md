@@ -4,18 +4,19 @@ A Streamlit application for interactively configuring a 2D U-Net-style segmentat
 
 ## Features
 
-- Configure input dimensions/channels, output classes, downsampling depth, initial filters, convolution kernel, upsampling, skip connections, batch normalization, bias, precision, and batch size.
-- Inspect layer output shapes, trainable parameters, and MAC estimates.
-- Review FLOPs, raw model-weight storage, and an analytical activation-tensor footprint.
+- Configure input dimensions/channels, output classes, downsampling depth, convolution kernel, upsampling, skip connections, batch normalization, bias, precision, and batch size.
+- Edit the number of convolution layers and output-filter count independently for every encoder, bottleneck, and decoder stage.
+- Recalculate parameters, MACs, FLOPs, weight storage, and activation-tensor footprint whenever the configuration changes.
+- Inspect per-layer input/output channels, output tensor shapes, parameters, and MAC estimates.
 - Compare baseline and ablated architectures.
-- Export layer analysis as CSV and full analysis as JSON.
+- Export layer analysis as CSV and the complete architecture configuration and analysis as JSON.
 - Run automated unit tests on GitHub Actions.
 
 ## Architecture assumptions
 
 - Same-padding 2D U-Net-style implementation. This is **not** an exact reproduction of the original 2015 U-Net paper's valid-padding/cropping implementation.
-- Two convolutions in each encoder block, bottleneck, and decoder block.
-- Max pooling between encoder levels.
+- Encoder, bottleneck, and decoder stages support 1–4 convolution layers in the Streamlit editor. Every convolution has its own editable output-filter count.
+- Max pooling is used between encoder levels.
 - Decoder uses either learnable transposed convolution or parameter-free bilinear upsampling.
 - Skip connections concatenate matching encoder feature maps when enabled.
 - Output projection is a 1×1 convolution that produces class logits.
@@ -65,16 +66,15 @@ GitHub Actions checks Python syntax and runs the unit tests on pushes and pull r
 
 ## Deploy as a website using Streamlit Community Cloud
 
-Deployment needs to be authorized from your own Streamlit account; this repository integration cannot accept hosting terms or connect your account on your behalf.
+Deployment needs to be authorized from your own Streamlit account.
 
 1. Open [Streamlit Community Cloud](https://share.streamlit.io/).
-2. Sign in with GitHub and authorize access to this public repository if prompted.
-3. Select **Create app** (or **Deploy an app**).
-4. Choose repository `jothirajs/unet-virtual-assistant-calculator`, branch `main`, and main file path `app.py`.
-5. Select **Deploy** and wait for the build to finish.
-6. Open the URL Streamlit provides and test the configuration controls, ablation tab, CSV/JSON downloads, and architecture diagram.
+2. Sign in with GitHub.
+3. Select the repository `jothirajs/unet-virtual-assistant-calculator`, branch `main`, and main file path `app.py`.
+4. Deploy and wait for the build to finish.
+5. Test the layer editor, recalculated metrics, ablation tab, CSV/JSON downloads, and architecture diagram.
 
-The repository includes `packages.txt` for the Graphviz system package used by the architecture diagram and `requirements.txt` for Python dependencies. If deployment reports a build error, open the app's logs and share the error text so it can be diagnosed.
+The repository includes `packages.txt` for the Graphviz system package used by the architecture diagram and `requirements.txt` for Python dependencies.
 
 ## Repository structure
 
