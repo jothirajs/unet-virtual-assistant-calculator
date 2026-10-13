@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pandas as pd
 import streamlit as st
@@ -406,9 +407,246 @@ with analysis_tab:
     st.graphviz_chart(dot, use_container_width=True)
 
 with compare_tab:
-    st.markdown("### What changes when you remove or replace a component?")
-    st.caption("Ablations compare complexity only. They do not indicate whether segmentation accuracy improves or declines.")
-    comp = pd.DataFrame(compare_analyses(config))
+    st.markdown("### Build a plug-and-play variant")
+    st.caption(
+        "Create a custom model variant by enabling or disabling supported components, "
+        "changing a stage's convolution count, and adjusting its filter widths. "
+        "The baseline remains unchanged."
+    )
+
+    with st.container(border=True):
+        st.markdown("#### 1 · Select a stage to edit")
+        stage_options = (
+            [f"Encoder stage {i + 1}" for i in range(config.levels)]
+            + ["Bottleneck"]
+            + [f"Decoder stage {i + 1}" for i in range(config.levels)]
+        )
+        selected_stage = st.selectbox(
+            "Architecture stage",
+            stage_options,
+            help="Choose the exact encoder, bottleneck, or decoder stage to customize.",
+            key="ablation_stage",
+        )
+
+        custom_encoder = [list(stage) for stage in config.effective_encoder_filters()]
+        custom_bottleneck = list(config.effective_bottleneck_filters())
+        custom_decoder = [list(stage) for stage in config.effective_decoder_filters()]
+
+        if selected_stage == "Bottleneck":
+            selected_filters = custom_bottleneck
+        elif selected_stage.startswith("Encoder"):
+            stage_index = int(selected_stage.rsplit(" ", 1)[1]) - 1
+            selected_filters = custom_encoder[stage_index]
+        else:
+            stage_index = int(selected_stage.rsplit(" ", 1)[1]) - 1
+            selected_filters = custom_decoder[stage_index]
+
+        count_col, kernel_col = st.columns(2)
+        with count_col:
+            custom_count = st.select_slider(
+                "Convolution layers in selected stage",
+                options=[1, 2, 3, 4],
+                value=min(max(len(selected_filters), 1), 4),
+                key=f"ablation_count_{selected_stage}",
+                help="This changes the number of convolution layers in this stage.",
+            )
+        with kernel_col:
+            custom_kernel = st.selectbox(
+                "Convolution kernel for custom variant",
+                [1, 3, 5, 7],
+                index=[1, 3, 5, 7].index(config.conv_kernel)
+                if config.conv_kernel in [1, 3, 5, 7]
+                else 1,
+                key="ablation_kernel",
+                help="Applies to convolution layers throughout the custom variant.",
+            )
+
+        st.markdown("**Output filters per convolution**")
+        filter_columns = st.columns(custom_count)
+        edited_filters = []
+        for index in range(custom_count):
+            default_filter = (
+                selected_filters[index]
+                if index < len(selected_filters)
+                else selected_filters[-1]
+            )
+            with filter_columns[index]:
+                edited_filters.append(
+                    int(
+                        st.number_input(
+                            f"Conv {index + 1}",
+                            min_value=1,
+                            max_value=2048,
+                            value=int(default_filter),
+                            step=8,
+                            key=f"ablation_{selected_stage}_filter_{index + 1}",
+                            help="Number of output feature maps for this convolution.",
+                        )
+                    )
+                )
+
+        if selected_stage == "Bottleneck":
+            custom_bottleneck = edited_filters
+        elif selected_stage.startswith("Encoder"):
+            custom_encoder[stage_index] = edited_filters
+        else:
+            custom_decoder[stage_index] = edited_filters
+
+        st.markdown("#### 2 · Plug components in or out")
+        component_col1, component_col2 = st.columns(2)
+        with component_col1:
+            custom_skips = st.checkbox(
+                "Use skip connections",
+                value=config.skip_connections,
+                key="ablation_skip",
+                help="Concatenate encoder features with decoder features at each matching resolution.",
+            )
+            custom_bn = st.checkbox(
+                "Use batch normalization",
+                value=config.batch_norm,
+                key="ablation_bn",
+                help="Adds trainable scale and offset parameters after each convolution in this estimator.",
+            )
+        with component_col2:
+            custom_bias = st.checkbox(
+                "Use convolution biases",
+                value=config.use_bias,
+                key="ablation_bias",
+            )
+            custom_upsampling = st.selectbox(
+                "Decoder upsampling operation",
+                ["transpose", "bilinear"],
+                index=0 if config.upsampling == "transpose" else 1,
+                format_func=lambda value: (
+                    "Transposed convolution" if value == "transpose"
+                    else "Bilinear interpolation"
+                ),
+                key="ablation_upsampling",
+            )
+
+        custom_config = replace(
+            config,
+            conv_kernel=int(custom_kernel),
+            skip_connections=custom_skips,
+            batch_norm=custom_bn,
+            use_bias=custom_bias,
+            upsampling=custom_upsampling,
+            encoder_filters=tuple(tuple(stage) for stage in custom_encoder),
+            bottleneck_filters=tuple(custom_bottleneck),
+            decoder_filters=tuple(tuple(stage) for stage in custom_decoder),
+        )
+        try:
+            custom_result = analyze_unet(custom_config)
+        except ValueError as err:
+            st.error(f"Custom variant configuration error: {err}")
+            custom_result = None
+
+    st.markdown("#### 3 · Compare baseline with your custom variant")
+    st.caption(
+        "The custom variant is recalculated from its configuration. These are analytical "
+        "complexity estimates, not measured speed or segmentation quality."
+    )
+    if custom_result is not None:
+        baseline_summary = analyze_unet(config)["summary"]
+        custom_summary = custom_result["summary"]
+        base_params = baseline_summary["parameters"]
+        custom_params = custom_summary["parameters"]
+        delta_pct = ((custom_params - base_params) / base_params * 100) if base_params else 0
+        metric_cols = st.columns(4)
+        metric_cols[0].metric(
+            "Custom parameters",
+            f"{custom_params:,}",
+            delta=f"{custom_params - base_params:+,} vs baseline",
+            delta_color="inverse",
+        )
+        metric_cols[1].metric(
+            "Custom MACs",
+            f"{custom_summary['MACs'] / 1e9:.3f} G",
+            delta=f"{(custom_summary['MACs'] - baseline_summary['MACs']) / 1e9:+.3f} G",
+            delta_color="inverse",
+        )
+        metric_cols[2].metric(
+            "Custom FLOPs",
+            f"{custom_summary['FLOPs_2x_MACs'] / 1e9:.3f} G",
+            delta=f"{(custom_summary['FLOPs_2x_MACs'] - baseline_summary['FLOPs_2x_MACs']) / 1e9:+.3f} G",
+            delta_color="inverse",
+        )
+        metric_cols[3].metric(
+            "Parameter change",
+            f"{delta_pct:+.2f}%",
+            help="Percentage change relative to the baseline parameter count.",
+        )
+
+        st.markdown("**Baseline vs custom configuration**")
+        comparison_rows = [
+            {
+                "variant": "Baseline",
+                "parameters": baseline_summary["parameters"],
+                "MACs": baseline_summary["MACs"],
+                "FLOPs": baseline_summary["FLOPs_2x_MACs"],
+                "weight_memory_MiB": round(baseline_summary["weight_memory_MiB"], 3),
+                "activation_footprint_MiB": round(
+                    baseline_summary["activation_tensor_footprint_MiB"], 3
+                ),
+            },
+            {
+                "variant": "Your custom variant",
+                "parameters": custom_summary["parameters"],
+                "MACs": custom_summary["MACs"],
+                "FLOPs": custom_summary["FLOPs_2x_MACs"],
+                "weight_memory_MiB": round(custom_summary["weight_memory_MiB"], 3),
+                "activation_footprint_MiB": round(
+                    custom_summary["activation_tensor_footprint_MiB"], 3
+                ),
+            },
+        ]
+        custom_comparison = pd.DataFrame(comparison_rows)
+        custom_comparison["parameter_change_%"] = [
+            0.0,
+            round(delta_pct, 2),
+        ]
+        st.dataframe(custom_comparison, use_container_width=True, hide_index=True)
+        with st.expander("View custom variant layer analysis"):
+            st.dataframe(
+                pd.DataFrame(custom_result["layers"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+        st.download_button(
+            "Download custom variant · JSON",
+            json.dumps(
+                {
+                    "model": "Custom U-Net-style analytical variant",
+                    "config": custom_config.to_dict(),
+                    "summary": custom_summary,
+                    "layers": custom_result["layers"],
+                },
+                indent=2,
+            ),
+            "unet_custom_variant.json",
+            "application/json",
+            key="download_custom_variant",
+        )
+
+    st.divider()
+    st.markdown("### Preset ablations")
+    st.caption(
+        "Use these quick comparisons for common single-component changes. "
+        "Select the variants you want to include."
+    )
+    preset_options = [
+        "Without skip connections",
+        "Without batch normalization",
+        "Bilinear upsampling",
+        "Without convolution biases",
+    ]
+    selected_presets = st.multiselect(
+        "Preset variants",
+        preset_options,
+        default=preset_options,
+        key="preset_ablation_selection",
+    )
+    comp = pd.DataFrame(compare_analyses(config, ["Baseline"] + selected_presets))
     baseline_params = int(comp.loc[comp["variant"] == "Baseline", "parameters"].iloc[0])
     comp["parameter_change_%"] = comp["parameters"].apply(
         lambda value: round((value - baseline_params) / baseline_params * 100, 2)
@@ -416,7 +654,7 @@ with compare_tab:
         else 0
     )
     st.dataframe(comp, use_container_width=True, hide_index=True)
-    st.markdown("#### Parameter count by variant")
+    st.markdown("#### Parameter count by preset variant")
     st.bar_chart(comp.set_index("variant")[["parameters"]], horizontal=True)
 
 with export_tab:
