@@ -415,104 +415,136 @@ with compare_tab:
     )
 
     with st.container(border=True):
-        st.markdown("#### 1 · Select a stage to edit")
-        stage_options = (
-            [f"Encoder stage {i + 1}" for i in range(config.levels)]
-            + ["Bottleneck"]
-            + [f"Decoder stage {i + 1}" for i in range(config.levels)]
-        )
-        selected_stage = st.selectbox(
-            "Architecture stage",
-            stage_options,
-            help="Choose the exact encoder, bottleneck, or decoder stage to customize.",
-            key="ablation_stage",
+        st.markdown("#### 1 · Select specific layers")
+        st.caption(
+            "Use multi-select to choose one or several convolution layers. "
+            "You can adjust each selected layer's output filters or remove selected layers."
         )
 
         custom_encoder = [list(stage) for stage in config.effective_encoder_filters()]
         custom_bottleneck = list(config.effective_bottleneck_filters())
         custom_decoder = [list(stage) for stage in config.effective_decoder_filters()]
 
-        if selected_stage == "Bottleneck":
-            selected_filters = custom_bottleneck
-        elif selected_stage.startswith("Encoder"):
-            stage_index = int(selected_stage.rsplit(" ", 1)[1]) - 1
-            selected_filters = custom_encoder[stage_index]
-        else:
-            stage_index = int(selected_stage.rsplit(" ", 1)[1]) - 1
-            selected_filters = custom_decoder[stage_index]
+        layer_catalog = {}
+        for stage_index, stage_filters in enumerate(custom_encoder):
+            for conv_index, _ in enumerate(stage_filters):
+                label = f"Encoder {stage_index + 1} · Conv {conv_index + 1}"
+                layer_catalog[label] = ("encoder", stage_index, conv_index)
+        for conv_index, _ in enumerate(custom_bottleneck):
+            label = f"Bottleneck · Conv {conv_index + 1}"
+            layer_catalog[label] = ("bottleneck", 0, conv_index)
+        for stage_index, stage_filters in enumerate(custom_decoder):
+            for conv_index, _ in enumerate(stage_filters):
+                label = f"Decoder {stage_index + 1} · Conv {conv_index + 1}"
+                layer_catalog[label] = ("decoder", stage_index, conv_index)
 
-        count_col, kernel_col = st.columns(2)
-        with count_col:
-            custom_count = st.select_slider(
-                "Convolution layers in selected stage",
-                options=[1, 2, 3, 4],
-                value=min(max(len(selected_filters), 1), 4),
-                key=f"ablation_count_{selected_stage}",
-                help="This changes the number of convolution layers in this stage.",
-            )
-        with kernel_col:
-            custom_kernel = st.selectbox(
-                "Convolution kernel for custom variant",
-                [1, 3, 5, 7],
-                index=[1, 3, 5, 7].index(config.conv_kernel)
-                if config.conv_kernel in [1, 3, 5, 7]
-                else 1,
-                key="ablation_kernel",
-                help="Applies to convolution layers throughout the custom variant.",
-            )
+        selected_layers = st.multiselect(
+            "Convolution layer(s)",
+            options=list(layer_catalog),
+            default=[],
+            key="ablation_selected_layers",
+            help="Select multiple layers to expose their individual filter and removal controls.",
+            placeholder="Choose one or more layers…",
+        )
 
-        st.markdown("**Output filters per convolution**")
-        filter_columns = st.columns(custom_count)
-        edited_filters = []
-        for index in range(custom_count):
-            default_filter = (
-                selected_filters[index]
-                if index < len(selected_filters)
-                else selected_filters[-1]
-            )
-            with filter_columns[index]:
-                edited_filters.append(
-                    int(
-                        st.number_input(
-                            f"Conv {index + 1}",
-                            min_value=1,
-                            max_value=2048,
-                            value=int(default_filter),
-                            step=8,
-                            key=f"ablation_{selected_stage}_filter_{index + 1}",
-                            help="Number of output feature maps for this convolution.",
-                        )
+        selected_filters_by_layer = {}
+        remove_layers = []
+        for layer_label in selected_layers:
+            stage_name, stage_index, conv_index = layer_catalog[layer_label]
+            if stage_name == "encoder":
+                current_filters = custom_encoder[stage_index][conv_index]
+                stage_filters = custom_encoder[stage_index]
+            elif stage_name == "bottleneck":
+                current_filters = custom_bottleneck[conv_index]
+                stage_filters = custom_bottleneck
+            else:
+                current_filters = custom_decoder[stage_index][conv_index]
+                stage_filters = custom_decoder[stage_index]
+
+            filter_col, remove_col = st.columns([3, 1])
+            with filter_col:
+                selected_filters_by_layer[layer_label] = int(
+                    st.number_input(
+                        f"{layer_label} · output filters",
+                        min_value=1,
+                        max_value=2048,
+                        value=int(current_filters),
+                        step=8,
+                        key=f"ablation_layer_filter_{stage_name}_{stage_index}_{conv_index}",
+                        help="Number of output feature maps produced by this layer.",
                     )
                 )
+            with remove_col:
+                remove_it = st.checkbox(
+                    "Remove",
+                    value=False,
+                    key=f"ablation_remove_{stage_name}_{stage_index}_{conv_index}",
+                    help="Remove this convolution from the custom variant.",
+                )
+                if remove_it:
+                    remove_layers.append((stage_name, stage_index, conv_index, layer_label))
 
-        if selected_stage == "Bottleneck":
-            custom_bottleneck = edited_filters
-        elif selected_stage.startswith("Encoder"):
-            custom_encoder[stage_index] = edited_filters
-        else:
-            custom_decoder[stage_index] = edited_filters
+        # Apply filter edits first, then remove selected layers from each stage in reverse index order.
+        for layer_label, new_filters in selected_filters_by_layer.items():
+            stage_name, stage_index, conv_index = layer_catalog[layer_label]
+            if stage_name == "encoder":
+                custom_encoder[stage_index][conv_index] = new_filters
+            elif stage_name == "bottleneck":
+                custom_bottleneck[conv_index] = new_filters
+            else:
+                custom_decoder[stage_index][conv_index] = new_filters
 
-        st.markdown("#### 2 · Plug components in or out")
+        for stage_name, stage_index, conv_index, _ in sorted(
+            remove_layers, key=lambda item: (item[0], item[1], item[2]), reverse=True
+        ):
+            if stage_name == "encoder":
+                custom_encoder[stage_index].pop(conv_index)
+            elif stage_name == "bottleneck":
+                custom_bottleneck.pop(conv_index)
+            else:
+                custom_decoder[stage_index].pop(conv_index)
+
+        st.markdown("#### 2 · Configure skip connections")
+        st.caption(
+            "Select the encoder-to-decoder skip connections you want to keep. "
+            "Each connection joins features at the matching resolution."
+        )
+        skip_options = [
+            f"Skip connection · Encoder {level + 1} → Decoder {level + 1}"
+            for level in range(config.levels)
+        ]
+        default_skip_options = [
+            skip_options[level - 1]
+            for level in config.effective_skip_connection_levels()
+        ]
+        selected_skip_options = st.multiselect(
+            "Active skip connections",
+            options=skip_options,
+            default=default_skip_options,
+            key="ablation_selected_skip_connections",
+            help="Choose any combination of skip connections, including none or all levels.",
+        )
+        custom_skip_levels = tuple(
+            index + 1
+            for index, option in enumerate(skip_options)
+            if option in selected_skip_options
+        )
+
+        st.markdown("#### 3 · Configure shared components")
         component_col1, component_col2 = st.columns(2)
         with component_col1:
-            custom_skips = st.checkbox(
-                "Use skip connections",
-                value=config.skip_connections,
-                key="ablation_skip",
-                help="Concatenate encoder features with decoder features at each matching resolution.",
-            )
             custom_bn = st.checkbox(
                 "Use batch normalization",
                 value=config.batch_norm,
                 key="ablation_bn",
                 help="Adds trainable scale and offset parameters after each convolution in this estimator.",
             )
-        with component_col2:
             custom_bias = st.checkbox(
                 "Use convolution biases",
                 value=config.use_bias,
                 key="ablation_bias",
             )
+        with component_col2:
             custom_upsampling = st.selectbox(
                 "Decoder upsampling operation",
                 ["transpose", "bilinear"],
@@ -523,11 +555,32 @@ with compare_tab:
                 ),
                 key="ablation_upsampling",
             )
+            custom_kernel = st.selectbox(
+                "Convolution kernel size",
+                [1, 3, 5, 7],
+                index=[1, 3, 5, 7].index(config.conv_kernel)
+                if config.conv_kernel in [1, 3, 5, 7]
+                else 1,
+                key="ablation_kernel",
+                help="Applies to convolution layers throughout the custom variant.",
+            )
+
+        invalid_empty_stages = (
+            any(not stage for stage in custom_encoder)
+            or not custom_bottleneck
+            or any(not stage for stage in custom_decoder)
+        )
+        if invalid_empty_stages:
+            st.error(
+                "Each encoder, bottleneck, and decoder stage must retain at least one convolution. "
+                "Restore a convolution in any empty stage to calculate the custom variant."
+            )
 
         custom_config = replace(
             config,
             conv_kernel=int(custom_kernel),
-            skip_connections=custom_skips,
+            skip_connections=bool(custom_skip_levels),
+            skip_connection_levels=custom_skip_levels,
             batch_norm=custom_bn,
             use_bias=custom_bias,
             upsampling=custom_upsampling,
@@ -536,7 +589,10 @@ with compare_tab:
             decoder_filters=tuple(tuple(stage) for stage in custom_decoder),
         )
         try:
-            custom_result = analyze_unet(custom_config)
+            if invalid_empty_stages:
+                custom_result = None
+            else:
+                custom_result = analyze_unet(custom_config)
         except ValueError as err:
             st.error(f"Custom variant configuration error: {err}")
             custom_result = None
