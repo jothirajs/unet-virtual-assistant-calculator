@@ -37,6 +37,13 @@ class TestUNetEngine(unittest.TestCase):
         with_bn = analyze_unet(replace(config, batch_norm=True))["summary"]["parameters"]
         self.assertGreater(with_bn, baseline)
 
+    def test_skip_connections_can_be_selected_per_level(self):
+        config = UNetConfig(skip_connection_levels=(2,))
+        layers = analyze_unet(config)["layers"]
+        skip_layers = [row["layer"] for row in layers if row["type"] == "Concatenate"]
+        self.assertEqual(skip_layers, ["Decoder 2 SkipConcat"])
+        self.assertEqual(config.to_dict()["skip_connection_levels"], [2])
+
     def test_ablation_table_contains_five_variants(self):
         self.assertEqual(len(compare_analyses(UNetConfig())), 5)
 
