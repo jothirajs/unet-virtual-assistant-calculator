@@ -23,6 +23,9 @@ class UNetConfig:
     padding: Literal["same"] = "same"
     upsampling: Literal["transpose", "bilinear"] = "transpose"
     skip_connections: bool = True
+    # Optional 1-based U-Net levels with active encoder-to-decoder skip connections.
+    # None preserves the legacy global skip_connections setting.
+    skip_connection_levels: tuple[int, ...] | None = None
     batch_norm: bool = False
     use_bias: bool = True
     precision_bytes: int = 4
@@ -52,6 +55,11 @@ class UNetConfig:
             for level in reversed(range(self.levels))
         )
 
+    def effective_skip_connection_levels(self) -> tuple[int, ...]:
+        if self.skip_connection_levels is not None:
+            return tuple(sorted(set(self.skip_connection_levels)))
+        return tuple(range(1, self.levels + 1)) if self.skip_connections else ()
+
     def validate(self) -> None:
         values = {
             "input_height": self.input_height,
@@ -80,6 +88,11 @@ class UNetConfig:
             raise ValueError("Only same padding is currently supported.")
         if self.upsampling not in ("transpose", "bilinear"):
             raise ValueError("upsampling must be 'transpose' or 'bilinear'.")
+        skip_levels = self.effective_skip_connection_levels()
+        if any(not isinstance(level, int) or level < 1 or level > self.levels for level in skip_levels):
+            raise ValueError("skip_connection_levels must contain valid 1-based levels.")
+        if len(skip_levels) != len(set(skip_levels)):
+            raise ValueError("skip_connection_levels must not contain duplicates.")
 
         encoder = self.effective_encoder_filters()
         bottleneck = self.effective_bottleneck_filters()
@@ -100,4 +113,5 @@ class UNetConfig:
         data["encoder_filters"] = [list(stage) for stage in self.effective_encoder_filters()]
         data["bottleneck_filters"] = list(self.effective_bottleneck_filters())
         data["decoder_filters"] = [list(stage) for stage in self.effective_decoder_filters()]
+        data["skip_connection_levels"] = list(self.effective_skip_connection_levels())
         return data
