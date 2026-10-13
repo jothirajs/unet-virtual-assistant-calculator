@@ -71,6 +71,18 @@ st.markdown(
         border-radius: 0 9px 9px 0; color: #355571; font-size: .9rem; margin: 8px 0 16px 0;
       }
       .small-muted { color: #667b8f; font-size: .82rem; }
+      .author-card {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+        gap: 14px; background: #fff; border: 1px solid #d9e5f0; border-radius: 14px;
+        padding: 15px 20px; margin: 0 0 22px 0;
+      }
+      .author-name { color: #17324d; font-weight: 750; font-size: 1rem; margin-bottom: 3px; }
+      .author-role { color: #5f7185; font-size: .88rem; line-height: 1.45; }
+      .author-links { display: flex; flex-wrap: wrap; gap: 8px; }
+      .author-links a {
+        display: inline-block; text-decoration: none; color: #225f99; background: #eef6fd;
+        border: 1px solid #d3e5f5; border-radius: 8px; padding: 7px 10px; font-size: .82rem; font-weight: 650;
+      }
       .status-pill {
         display: inline-block; border: 1px solid #cfe2f3; background: #f5faff;
         color: #2b6397; border-radius: 999px; padding: 5px 10px; font-size: .78rem; font-weight: 700;
@@ -98,6 +110,38 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+st.markdown(
+    """
+    <div class="author-card">
+      <div>
+        <div class="author-name">Developed by Dr. Jothiraj Selvaraj</div>
+        <div class="author-role">Assistant Professor · Department of Biomedical Engineering<br>
+        Karunya Institute of Technology and Sciences, Coimbatore, India</div>
+      </div>
+      <div class="author-links">
+        <a href="https://sites.google.com/view/jothiraj-selvaraj/" target="_blank" rel="noopener noreferrer">Academic profile ↗</a>
+        <a href="https://in.linkedin.com/in/jothirajselvaraj" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.expander("About the developer and research background"):
+    st.markdown(
+        """
+        **Dr. Jothiraj Selvaraj** is a biomedical engineering academic and researcher working at the intersection of artificial intelligence, deep learning, medical image analysis, and healthcare applications.
+
+        **Academic qualifications:** Ph.D. in Biomedical Engineering; M.E. in Medical Electronics; B.E. in Biomedical Engineering; MBA in Hospital Management.
+
+        **Research interests:** AI/ML for medical image analysis, deep-learning-based segmentation, colorectal polyp analysis, and quantum machine learning.
+
+        This application is an educational and research-support tool for analytical complexity estimation of configurable 2D U-Net-style architectures. It does not train models or provide measured runtime, peak GPU memory, or segmentation-accuracy results.
+
+        **Profile:** [jothiraj-selvaraj](https://sites.google.com/view/jothiraj-selvaraj/)
+        """
+    )
 
 
 def layer_filter_editor(stage_label, default_filters, key_prefix):
@@ -407,6 +451,6 @@ with export_tab:
 
 st.divider()
 st.markdown(
-    '<div class="small-muted">U-Net Studio · Same-padding 2D U-Net-style complexity estimator · Not an exact reproduction of the original valid-padding U-Net.</div>',
+    '<div class="small-muted">U-Net Studio · Developed by Dr. Jothiraj Selvaraj · Same-padding 2D U-Net-style complexity estimator · Not an exact reproduction of the original valid-padding U-Net.</div>',
     unsafe_allow_html=True,
 )
