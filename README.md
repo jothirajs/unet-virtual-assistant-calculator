@@ -1,19 +1,19 @@
 # U-Net Virtual Assistant Calculator
 
-A Streamlit application for interactively configuring a 2D U-Net-style segmentation architecture and estimating its model complexity. It is intended for teaching, architecture exploration, and research planning.
+A Streamlit application for interactively configuring a 2D U-Net-style segmentation architecture and estimating its model complexity. Intended for teaching, architecture exploration, and research planning.
 
 ## Features
 
-- Interactive configuration of input dimensions/channels, output classes, downsampling depth, initial filters, convolution kernel, upsampling method, skip connections, batch normalization, bias, precision, and batch size.
-- Layer-by-layer output shapes, trainable parameters, and MAC estimates.
-- FLOPs, raw model-weight storage, and an analytical activation-tensor footprint.
-- Baseline-versus-ablation comparison.
-- CSV and JSON export.
-- Automated unit tests through GitHub Actions.
+- Configure input dimensions/channels, output classes, downsampling depth, initial filters, convolution kernel, upsampling, skip connections, batch normalization, bias, precision, and batch size.
+- Inspect layer output shapes, trainable parameters, and MAC estimates.
+- Review FLOPs, raw model-weight storage, and an analytical activation-tensor footprint.
+- Compare baseline and ablated architectures.
+- Export layer analysis as CSV and full analysis as JSON.
+- Run automated unit tests on GitHub Actions.
 
 ## Architecture assumptions
 
-- Same-padding 2D U-Net-style implementation. It is **not** an exact reproduction of the original 2015 U-Net paper's valid-padding/cropping implementation.
+- Same-padding 2D U-Net-style implementation. This is **not** an exact reproduction of the original 2015 U-Net paper's valid-padding/cropping implementation.
 - Two convolutions in each encoder block, bottleneck, and decoder block.
 - Max pooling between encoder levels.
 - Decoder uses either learnable transposed convolution or parameter-free bilinear upsampling.
@@ -25,17 +25,17 @@ A Streamlit application for interactively configuring a 2D U-Net-style segmentat
 
 **Parameters.** Convolution/transposed-convolution weights and enabled biases, plus trainable batch-normalization scale and offset parameters.
 
-**MACs.** Conv2D estimate = output height × output width × output channels × input channels × kernel height × kernel width. Transposed-convolution MACs use an output-based dense-equivalent estimate; overlap and boundary effects are not modeled. Pooling, normalization, activation functions, concatenation, and bilinear interpolation arithmetic are excluded.
+**MACs.** Conv2D estimate = output height × output width × output channels × input channels × kernel height × kernel width. Transposed-convolution MACs use an output-based dense-equivalent estimate; overlap and boundary effects are not modeled. Pooling, normalization, activations, concatenation, and bilinear interpolation arithmetic are excluded.
 
 **FLOPs.** Reported as 2 × MACs. Other conventions can yield different totals.
 
 **Weight storage.** Parameter count × bytes per parameter, converted to MiB (1 MiB = 1,048,576 bytes). This is raw parameter storage, not total runtime GPU memory.
 
-**Activation tensor footprint.** Sum of listed layer-output tensor sizes plus the input tensor for the selected batch size and precision. It is not peak GPU memory and is not a training-memory estimate. Actual memory depends on tensor lifetimes, framework workspaces, gradients, optimizer states, allocator behavior, and inference/training mode.
+**Activation tensor footprint.** Sum of listed layer-output tensor sizes plus the input tensor for the selected batch size and precision. It is not peak GPU memory or a training-memory estimate. Actual memory depends on tensor lifetimes, framework workspaces, gradients, optimizer states, allocator behavior, and inference/training mode.
 
-**Research caution.** Complexity estimates do not establish segmentation quality, clinical utility, or statistical significance. This app does not measure runtime latency or actual GPU memory. For empirical results, implement/profile the architecture in a deep-learning framework and evaluate it on a documented dataset using appropriate segmentation metrics.
+**Research caution.** Complexity estimates do not establish segmentation quality, clinical utility, or statistical significance. This app does not measure runtime latency or actual GPU memory. For empirical results, implement/profile the architecture in a deep-learning framework and evaluate it on a documented dataset using suitable segmentation metrics.
 
-## Installation
+## Install and run locally
 
 Use Python 3.10 or newer.
 
@@ -48,17 +48,10 @@ Activate the environment:
 - Windows PowerShell: `.venv\\Scripts\\Activate.ps1`
 - macOS/Linux: `source .venv/bin/activate`
 
-Install dependencies:
+Install dependencies and launch:
 
 ```bash
 python -m pip install -r requirements.txt
-```
-
-## Run locally
-
-From the repository root:
-
-```bash
 streamlit run app.py
 ```
 
@@ -68,22 +61,31 @@ streamlit run app.py
 python -m unittest discover -s tests -v
 ```
 
-A GitHub Actions workflow also runs the unit tests on pushes and pull requests.
+GitHub Actions checks Python syntax and runs the unit tests on pushes and pull requests.
 
-## Deploy
+## Deploy as a website using Streamlit Community Cloud
 
-The app can be deployed through Streamlit Community Cloud by selecting this repository, the `main` branch, and `app.py` as the application entry point.
+Deployment needs to be authorized from your own Streamlit account; this repository integration cannot accept hosting terms or connect your account on your behalf.
+
+1. Open [Streamlit Community Cloud](https://share.streamlit.io/).
+2. Sign in with GitHub and authorize access to this public repository if prompted.
+3. Select **Create app** (or **Deploy an app**).
+4. Choose repository `jothirajs/unet-virtual-assistant-calculator`, branch `main`, and main file path `app.py`.
+5. Select **Deploy** and wait for the build to finish.
+6. Open the URL Streamlit provides and test the configuration controls, ablation tab, CSV/JSON downloads, and architecture diagram.
+
+The repository includes `packages.txt` for the Graphviz system package used by the architecture diagram and `requirements.txt` for Python dependencies. If deployment reports a build error, open the app's logs and share the error text so it can be diagnosed.
 
 ## Repository structure
 
 ```text
 unet-virtual-assistant-calculator/
 ├── app.py
-├── config.py                 # legacy root-level module; app uses unet_tool/
-├── engine.py                 # legacy root-level module; app uses unet_tool/
 ├── requirements.txt
+├── packages.txt
 ├── README.md
 ├── LICENSE
+├── .gitignore
 ├── unet_tool/
 │   ├── __init__.py
 │   ├── config.py
@@ -94,8 +96,6 @@ unet-virtual-assistant-calculator/
     └── workflows/
         └── tests.yml
 ```
-
-The root-level `config.py`, `engine.py`, `__init__.py`, and `test_engine.py` came from the initial upload. The working application imports the package under `unet_tool/`; the package is now included explicitly.
 
 ## License
 
