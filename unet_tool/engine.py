@@ -105,7 +105,7 @@ def analyze_unet(config: UNetConfig) -> dict[str, Any]:
                 note="Interpolation arithmetic excluded from MACs",
             )
 
-        if config.skip_connections:
+        if (level + 1) in config.effective_skip_connection_levels():
             joined_channels = cin + skip_channels
             add_layer(
                 f"Decoder {level + 1} SkipConcat", "Concatenate",
