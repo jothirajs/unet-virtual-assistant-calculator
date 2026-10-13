@@ -40,6 +40,24 @@ class TestUNetEngine(unittest.TestCase):
     def test_ablation_table_contains_five_variants(self):
         self.assertEqual(len(compare_analyses(UNetConfig())), 5)
 
+    def test_custom_layer_filters_and_counts_change_complexity(self):
+        baseline = analyze_unet(UNetConfig())["summary"]
+        custom = UNetConfig(
+            encoder_filters=((16,), (32, 32, 32), (64,), (128, 128)),
+            bottleneck_filters=(256, 128, 256),
+            decoder_filters=((64,), (32, 32), (16, 16, 16), (8,)),
+        )
+        result = analyze_unet(custom)
+        self.assertNotEqual(result["summary"]["parameters"], baseline["parameters"])
+        self.assertEqual(result["config"]["encoder_filters"][1], [32, 32, 32])
+        self.assertTrue(any(row["layer"] == "Encoder 2 Conv 3" for row in result["layers"]))
+        self.assertTrue(any(row["layer"] == "Bottleneck Conv 3" for row in result["layers"]))
+
+    def test_empty_custom_stage_is_rejected(self):
+        config = UNetConfig(encoder_filters=((), (32, 32), (64, 64), (128, 128)))
+        with self.assertRaises(ValueError):
+            analyze_unet(config)
+
 
 if __name__ == "__main__":
     unittest.main()
